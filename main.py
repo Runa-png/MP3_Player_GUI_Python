@@ -22,11 +22,13 @@ QSlider
 
 from PyQt6.QtMultimedia import (
 QAudioOutput,
-QMediaPlayer
+QMediaPlayer,
+QMediaMetaData
 )
 
 from PyQt6.QtGui import (
-QPixmap
+QPixmap,
+QIcon
 )
 
 from mutagen import File
@@ -41,11 +43,12 @@ class MainWindow(QMainWindow):
     configs = config()
 
     # Main Window Tweaks #
-    self.setStyleSheet(f"background-color: {configs.mainWindow.backgroundColor}")
+    self.setStyleSheet(f"QMainWindow {{background-color: {configs.mainWindow.backgroundColor}}}")
 
     self.centralWidget = QWidget()
     self.setCentralWidget(self.centralWidget)
     self.setFixedSize(QSize(configs.width,configs.height))
+    self.setContentsMargins(10,0,0,0)
     ##
 
     # Top level #
@@ -54,7 +57,7 @@ class MainWindow(QMainWindow):
     self.topLevel.setSpacing(0)
 
     # If you touch this the layout breaks
-    for row in range(4):
+    for row in range(3):
       self.topLevel.setRowStretch(row, 1)
 
     for col in range(7):
@@ -69,12 +72,7 @@ class MainWindow(QMainWindow):
 
     self.playlist = []
     self.index = 0
-    ##
-
-    # Volume Widget #
-    self.volumeControl = VolumeSlider()
-    self.topLevel.addWidget(self.volumeControl, 0, 1, 1, 3)
-    ##
+    ##    
 
     # Quit Button #
     self.quitButton = CloseButton()
@@ -82,62 +80,89 @@ class MainWindow(QMainWindow):
     ##
 
     # Shuffle Button #
-    self.shuffleButton = CloseButton()
+    self.shuffleButton = ShuffleButton()
     self.topLevel.addWidget(self.shuffleButton, 0, 5)
-    self.shuffleButton.closeButton.clicked.connect(self.getAlbumArt)
+    self.shuffleButton.shuffleButton.clicked.connect(self.getAlbumArt)
     ##
 
     # Previous Button #
     self.previous = PreviousButton()
-    self.topLevel.addWidget(self.previous, 2, 1)
+    self.topLevel.addWidget(self.previous, 1, 1)
     ##
 
     # Play Button #
     self.playButton = PlayButton()
-    self.topLevel.addWidget(self.playButton, 2, 3)
+    self.topLevel.addWidget(self.playButton, 1, 3)
     ##
 
     # Next Button #
     self.nextButton = NextButton()
-    self.topLevel.addWidget(self.nextButton, 2, 5)
+    self.topLevel.addWidget(self.nextButton, 1, 5)
     ##
 
     # Album image label #
-    self.albumImage = QLabel("Hello")
-    self.topLevel.addWidget(self.albumImage, 1, 2)
+    self.albumImage = QLabel()
+    self.albumImage.setFixedSize(QSize(configs.pauseButton.width, configs.pauseButton.width))
+    self.topLevel.addWidget(self.albumImage, 2, 0)
     ##
 
+    ## Name and volume slider ##
+    self.albumSide = QVBoxLayout()
+    self.albumSide.setContentsMargins(10, 0, 0, 0) # 10px padding on the left
 
+    # Songname label #
+    self.songName = QLabel()
+    self.songName.setContentsMargins(0,30,0,0)
+    self.songName.setStyleSheet("color: white; font-weight: 700; font-size: 15px")
+    self.albumSide.addWidget(self.songName, Qt.AlignmentFlag.AlignCenter)
+    ##
+    
+    # Volume Widget #
+    self.volumeControl = VolumeSlider()
+    self.albumSide.addWidget(self.volumeControl, Qt.AlignmentFlag.AlignLeft)
+    ##
+
+    self.topLevel.addLayout(self.albumSide, 2, 1, 1, 6)
+    ##
 
     # Connect emit signals to functionality #
-    self.player.mediaStatusChanged.connect(lambda status: print(status)) # When the media playing changes
+    self.player.mediaStatusChanged.connect(self.mediaChanged) # When the media playing changes
+    self.volumeControl.volumeSlider.valueChanged.connect(lambda: self.audio_output.setVolume(self.volumeControl.volumeSlider.value() / 100))
     self.playButton.PLAY.connect(lambda status: self.playMusic(status)) # Play/Pause button pressed
     self.nextButton.NEXTSONG.connect(self.nextSong) # Next song button pressed
     self.previous.PREVSONG.connect(self.previousSong) # Previous song button pressed
     ##
 
+  def mediaChanged(self):
+    self.albumImage.setStyleSheet("QLabel {border: 2px solid rgb(255,255,255)}")
+    artGrabStatus = self.getAlbumArt()
+    if not artGrabStatus:
+      self.albumImage.setStyleSheet("QLabel {border: none")
+    self.songName.setText(self.player.metaData().stringValue(QMediaMetaData.Key.Title))
+
   def playMusic(self, status):
     if not self.playlist:
       self.generatePlaylist()
-    elif status == "Play":
+    elif status == True:
       self.player.pause()
       return
     self.player.play()
-    print(len(self.playlist), self.index)
 
   def generatePlaylist(self):
     configs = config()
     tempPlaylist = []
-    for file in os.scandir(configs.mainWindow.musicLocation):
-      print(file.path)
-      tempPlaylist.append(file.path)
+    try:
+      for file in os.scandir(configs.mainWindow.musicLocation):
+        tempPlaylist.append(file.path)
+    except FileNotFoundError:
+      print("Create a folder labeled music in project root")
+      return
     self.playlist = tempPlaylist
     self.index = 0
 
     self.player.setSource(QUrl.fromLocalFile(self.playlist[self.index]))
 
   def nextSong(self):
-    print(len(self.playlist)-1, self.index)
     if len(self.playlist) - 1 == self.index:
       self.player.stop()
       self.playlist = []
@@ -146,7 +171,7 @@ class MainWindow(QMainWindow):
       self.index += 1
       self.player.setSource(QUrl.fromLocalFile(self.playlist[self.index]))
       
-      if self.playButton.paused == "Pause":
+      if self.playButton.paused == False:
         self.player.play()
   
   def previousSong(self):
@@ -156,10 +181,12 @@ class MainWindow(QMainWindow):
       self.index -= 1
       self.player.setSource(QUrl.fromLocalFile(self.playlist[self.index]))
 
-      if self.playButton.paused == "Pause":
+      if self.playButton.paused == False:
         self.player.play()
 
   def getAlbumArt(self):
+    configs = config()
+    
     if not self.playlist:
       return
     
@@ -172,30 +199,35 @@ class MainWindow(QMainWindow):
       if apic:
         pixmap = QPixmap()
         if pixmap.loadFromData(apic[0].data):
+          pixmap = pixmap.scaled(config.pauseButton.width, config.pauseButton.width, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
           self.albumImage.setPixmap(pixmap)
-          return
+          return True
     self.albumImage.setText("")
-    return None
+    return False
 
 
 class PlayButton(QWidget):
   # Connections #
-  PLAY = pyqtSignal(str)
+  PLAY = pyqtSignal(bool)
   ##
-  
+  configs = config()
+
   def __init__(self):
     super().__init__()
 
     # Keep track of playing or paused #
-    self.paused = "Play"
+    self.paused = True
     ##
 
     # Add elements to main Layout #
     self.mainLayout = QHBoxLayout(self)
+    self.setStyleSheet(f"background-color: {self.configs.mainWindow.backgroundColor}; color: white; border: none")
     ##
 
     # Pause button #
-    self.pauseButton = QPushButton(self.paused)
+    self.pauseButton = QPushButton()
+    self.pauseButton.setIcon(QIcon("./assets/play.png"))
+    self.pauseButton.setIconSize(self.pauseButton.size())
 
     # Click Signals #
     self.pauseButton.clicked.connect(self.pauseButtonPressed)
@@ -211,15 +243,18 @@ class PlayButton(QWidget):
     ##
   
   def pauseButtonPressed(self, *args):
-    # You got to remember that its flipped, pause when its playing and play when its paused #
-    self.paused = "Play" if self.paused == "Pause" else "Pause"
+    self.paused = not self.paused
     
-    self.pauseButton.setText(self.paused)
+    if self.paused == False:
+      self.pauseButton.setIcon(QIcon("./assets/pause.png"))
+    else:
+      self.pauseButton.setIcon(QIcon("./assets/play.png"))
+    self.pauseButton.setIconSize(self.pauseButton.size())
     
     self.PLAY.emit(self.paused)
   
   def endOfPlaylist(self):
-    self.paused = "Play"
+    self.paused = True
     self.pauseButton.setText(self.paused)
 
 class NextButton(QWidget):
@@ -234,6 +269,7 @@ class NextButton(QWidget):
 
     # Add elements to main Layout #
     self.mainLayout = QHBoxLayout(self)
+    self.setStyleSheet(f"background-color: {configs.mainWindow.backgroundColor}; color: white; border: none")
     ##
 
     # Next song button #
@@ -266,6 +302,7 @@ class PreviousButton(QWidget):
 
     # Add elements to main Layout #
     self.mainLayout = QHBoxLayout(self)
+    self.setStyleSheet(f"background-color: {configs.mainWindow.backgroundColor}; color: white; border: none")
     ##
 
     # Previous song button #
@@ -291,14 +328,26 @@ class VolumeSlider(QWidget):
     super().__init__()
 
     configs = config()
+    
+    volumeBarWidth = 200
 
     # Add elements to main Layout #
     self.mainLayout = QHBoxLayout(self)
+    self.mainLayout.setContentsMargins(0, 0, 0, 20)
+    self.setFixedWidth(volumeBarWidth)
     ##
 
     # Volume slider #
     self.volumeSlider = QSlider(Qt.Orientation.Horizontal)
-    self.volumeSlider.setFixedWidth(250)
+    self.volumeSlider.setFixedWidth(volumeBarWidth)
+    self.volumeSlider.setValue(50)
+    self.volumeSlider.setMinimum(0)
+    self.volumeSlider.setMaximum(100)
+    ##
+
+    # Ticks #
+    self.volumeSlider.setTickPosition(QSlider.TickPosition.TicksBothSides)
+    self.volumeSlider.setTickInterval(20)
     ##
 
     self.mainLayout.addWidget(self.volumeSlider)
@@ -323,6 +372,46 @@ class CloseButton(QWidget):
     self.mainLayout.addWidget(self.closeButton)
 
     #self.closeButton.clicked.connect(lambda: sys.exit())
+
+class ShuffleButton(QWidget):
+  def __init__(self):
+    super().__init__()
+
+    self.configs = config()
+    
+    # Add elements to main Layout #
+    self.mainLayout = QHBoxLayout(self)
+    ##
+
+    # Toggle for visibility #
+    self.toggled = False
+    ##
+
+    # Shuffle Button #
+    self.shuffleButton = QPushButton()
+    self.shuffleButton.setIcon(QIcon("./assets/shuffle.png"))
+    self.shuffleButton.setIconSize(self.shuffleButton.size())
+    ##
+
+    # Configs
+    width = self.configs.closeButton.width
+    self.shuffleButton.setFixedSize(QSize(width,width))
+    self.shuffleButton.setStyleSheet(f"border: none; background-color: {self.configs.mainWindow.backgroundColor}")
+    ##
+
+    self.mainLayout.addWidget(self.shuffleButton)
+
+    self.shuffleButton.clicked.connect(self.shuffleClicked)
+  
+  def shuffleClicked(self):
+    self.toggled = not self.toggled
+    
+    if self.toggled == True:
+      self.shuffleButton.setStyleSheet("background-color: rgb(50,0,0)")
+    else:
+      self.shuffleButton.setStyleSheet(f"border: none; background-color: {self.configs.mainWindow.backgroundColor}")
+
+
 
 
 app = QApplication(sys.argv)
