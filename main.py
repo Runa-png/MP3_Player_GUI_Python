@@ -35,6 +35,7 @@ from mutagen import File
 import os
 import sys
 from config import config
+import random
 
 class MainWindow(QMainWindow):
   def __init__(self):
@@ -68,16 +69,11 @@ class MainWindow(QMainWindow):
     self.player = QMediaPlayer()
     self.audio_output = QAudioOutput()
     self.player.setAudioOutput(self.audio_output)
-    self.audio_output.setVolume(0.25)
+    self.audio_output.setVolume(0)
 
     self.playlist = []
-    self.index = 0
+    self.index = -1
     ##    
-
-    # Quit Button #
-    self.quitButton = CloseButton()
-    self.topLevel.addWidget(self.quitButton, 0, 6)
-    ##
 
     # Shuffle Button #
     self.shuffleButton = ShuffleButton()
@@ -120,6 +116,7 @@ class MainWindow(QMainWindow):
     # Volume Widget #
     self.volumeControl = VolumeSlider()
     self.albumSide.addWidget(self.volumeControl, Qt.AlignmentFlag.AlignLeft)
+    self.audio_output.setVolume(self.volumeControl.volumeSlider.value() / 100)
     ##
 
     self.topLevel.addLayout(self.albumSide, 2, 1, 1, 6)
@@ -128,10 +125,27 @@ class MainWindow(QMainWindow):
     # Connect emit signals to functionality #
     self.player.mediaStatusChanged.connect(self.mediaChanged) # When the media playing changes
     self.volumeControl.volumeSlider.valueChanged.connect(lambda: self.audio_output.setVolume(self.volumeControl.volumeSlider.value() / 100))
+    self.shuffleButton.shuffleButton.clicked.connect(lambda: self.shufflePlaylist(self.shuffleButton.buttonPressed))
     self.playButton.PLAY.connect(lambda status: self.playMusic(status)) # Play/Pause button pressed
     self.nextButton.NEXTSONG.connect(self.nextSong) # Next song button pressed
     self.previous.PREVSONG.connect(self.previousSong) # Previous song button pressed
     ##
+
+  def shufflePlaylist(self, status):
+    if status == True:
+      if not self.playlist:
+        self.generatePlaylist()
+      
+      songname = self.playlist[self.index]
+      random.shuffle(self.playlist)
+      self.index = 0
+      self.player.setSource(QUrl.fromLocalFile(self.playlist[self.index]))
+    elif status == False:
+      self.generatePlaylist()
+    
+    if self.playButton.paused == False:
+      self.player.play()
+
 
   def mediaChanged(self):
     self.albumImage.setStyleSheet("QLabel {border: 2px solid rgb(255,255,255)}")
@@ -175,7 +189,7 @@ class MainWindow(QMainWindow):
         self.player.play()
   
   def previousSong(self):
-    if self.index == 0:
+    if self.index <= 0:
       return
     else:
       self.index -= 1
@@ -255,7 +269,7 @@ class PlayButton(QWidget):
   
   def endOfPlaylist(self):
     self.paused = True
-    self.pauseButton.setText(self.paused)
+    self.pauseButton.setIcon(QIcon("./assets/play.png"))
 
 class NextButton(QWidget):
   # Connections #
@@ -273,7 +287,9 @@ class NextButton(QWidget):
     ##
 
     # Next song button #
-    self.nextButton = QPushButton("Next")
+    self.nextButton = QPushButton()
+    self.nextButton.setIcon(QIcon("./assets/forward.png"))
+    self.nextButton.setIconSize(self.nextButton.size())
     ##
 
     # configs #
@@ -306,7 +322,9 @@ class PreviousButton(QWidget):
     ##
 
     # Previous song button #
-    self.prevButton = QPushButton("Previous")
+    self.prevButton = QPushButton()
+    self.prevButton.setIcon(QIcon("./assets/back.png"))
+    self.prevButton.setIconSize(self.prevButton.size())
     ##
 
     # configs #
@@ -384,7 +402,7 @@ class ShuffleButton(QWidget):
     ##
 
     # Toggle for visibility #
-    self.toggled = False
+    self.buttonPressed = False
     ##
 
     # Shuffle Button #
@@ -404,15 +422,12 @@ class ShuffleButton(QWidget):
     self.shuffleButton.clicked.connect(self.shuffleClicked)
   
   def shuffleClicked(self):
-    self.toggled = not self.toggled
+    self.buttonPressed = not self.buttonPressed
     
-    if self.toggled == True:
+    if self.buttonPressed == True:
       self.shuffleButton.setStyleSheet("background-color: rgb(50,0,0)")
     else:
       self.shuffleButton.setStyleSheet(f"border: none; background-color: {self.configs.mainWindow.backgroundColor}")
-
-
-
 
 app = QApplication(sys.argv)
 window = MainWindow()
