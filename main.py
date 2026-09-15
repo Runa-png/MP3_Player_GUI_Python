@@ -146,6 +146,10 @@ class MainWindow(QMainWindow):
     if self.playButton.paused == False:
       self.player.play()
 
+  def reset(self):
+    self.songName.setText("")
+    self.albumImage.clear()
+    self.index = -1
 
   def mediaChanged(self):
     self.albumImage.setStyleSheet("QLabel {border: 2px solid rgb(255,255,255)}")
@@ -181,7 +185,11 @@ class MainWindow(QMainWindow):
       self.player.stop()
       self.playlist = []
       self.playButton.endOfPlaylist()
+    elif not self.playlist and self.index > 0:
+      self.reset()
+    
     else:
+      print(f"ERROR: index:{self.index} length:{len(self.playlist)}")
       self.index += 1
       self.player.setSource(QUrl.fromLocalFile(self.playlist[self.index]))
       
