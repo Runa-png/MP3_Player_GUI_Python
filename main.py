@@ -123,7 +123,7 @@ class MainWindow(QMainWindow):
     ##
 
     # Connect emit signals to functionality #
-    self.player.mediaStatusChanged.connect(self.mediaChanged) # When the media playing changes
+    self.player.mediaStatusChanged.connect(lambda status: self.mediaChanged(status)) # When the media playing changes
     self.volumeControl.volumeSlider.valueChanged.connect(lambda: self.audio_output.setVolume(self.volumeControl.volumeSlider.value() / 100))
     self.shuffleButton.shuffleButton.clicked.connect(lambda: self.shufflePlaylist(self.shuffleButton.buttonPressed))
     self.playButton.PLAY.connect(lambda status: self.playMusic(status)) # Play/Pause button pressed
@@ -151,11 +151,16 @@ class MainWindow(QMainWindow):
     self.albumImage.clear()
     self.index = -1
 
-  def mediaChanged(self):
-    self.albumImage.setStyleSheet("QLabel {border: 2px solid rgb(255,255,255)}")
+  def mediaChanged(self, status):
+    if status == QMediaPlayer.MediaStatus.EndOfMedia:
+      print("Next song playing")
+      self.nextSong()
+    else:
+      print("Status", status)
+
     artGrabStatus = self.getAlbumArt()
-    if not artGrabStatus:
-      self.albumImage.setStyleSheet("QLabel {border: none")
+    if artGrabStatus:
+      self.albumImage.setStyleSheet("QLabel {border: 2px solid rgb(255,255,255)}")
     self.songName.setText(self.player.metaData().stringValue(QMediaMetaData.Key.Title))
 
   def playMusic(self, status):
